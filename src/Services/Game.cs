@@ -12,11 +12,12 @@ namespace covidSim.Services
 
         private static Game _gameInstance;
         private static Random _random = new Random();
-        
+
         public const int PeopleCount = 320;
         public const int FieldWidth = 1000;
         public const int FieldHeight = 500;
         public const int MaxPeopleInHouse = 10;
+        private const double SicknessProbability = 0.03;
 
         private Game()
         {
@@ -25,13 +26,22 @@ namespace covidSim.Services
             _lastUpdate = DateTime.Now;
         }
 
+        public Game Restart()
+        {
+            Map = new CityMap();
+            People = CreatePopulation();
+            _lastUpdate = DateTime.Now;
+
+            return this;
+        }
+
         public static Game Instance => _gameInstance ?? (_gameInstance = new Game());
 
         private List<Person> CreatePopulation()
         {
             return Enumerable
                 .Repeat(0, PeopleCount)
-                .Select((_, index) => new Person(index, FindHome(), Map, index <= PeopleCount * 0.03))
+                .Select((_, index) => new Person(index, FindHome(), Map, index <= PeopleCount * SicknessProbability))
                 .ToList();
         }
 
@@ -47,7 +57,7 @@ namespace covidSim.Services
                     return homeId;
                 }
             }
-            
+
         }
 
         public Game GetNextState()
@@ -64,6 +74,7 @@ namespace covidSim.Services
         private void CalcNextStep()
         {
             _lastUpdate = DateTime.Now;
+            People = People.Where(p => p.PersonHealth != PersonHealth.Dead).ToList();
             foreach (var person in People)
             {
                 person.CalcNextStep();

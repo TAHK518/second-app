@@ -9,17 +9,19 @@ namespace covidSim.Services
         private const int MaxDistancePerTurn = 30;
         private static Random random = new Random();
         private PersonState state = PersonState.AtHome;
-        private int IllnessDuration;
+        private int sickStepsCount = 0;
+        private int deadStepsCount = 0;
+
+        private int HomeStayingDuration;
         private Vec homeCoords;
 
         public Person(int id, int homeId, CityMap map, bool isSick)
         {
             Id = id;
             HomeId = homeId;
-            IsSick = isSick;
-            if (IsSick)
-                IllnessDuration = 35;
-                
+            if (isSick)
+                PersonHealth = PersonHealth.Sick;
+            
 
             homeCoords = map.Houses[homeId].Coordinates.LeftTopCorner;
             var x = homeCoords.X + random.Next(HouseCoordinates.Width);
@@ -27,17 +29,28 @@ namespace covidSim.Services
             Position = new Vec(x, y);
         }
 
+        private const int StepsToRecovery = 35;
+        private const double ProbToDie = 0.000003;
+        private const int StepsToDie = 10;
         public int Id;
         public int HomeId;
         public Vec Position;
-        public bool IsSick;
+        public PersonHealth PersonHealth = PersonHealth.Healthy;
+
+        public bool IsBored;
 
         public void CalcNextStep()
         {
-            if (IsSick)
-                IllnessDuration--;
-            if (IllnessDuration == 0)
-                IsSick = false;
+            if (PersonHealth == PersonHealth.Dead)
+                return;
+
+            if (PersonHealth == PersonHealth.Dying)
+            {
+                deadStepsCount++;
+                if (deadStepsCount >= StepsToDie)
+                    PersonHealth = PersonHealth.Dead;
+                return;
+            }
             
             switch (state)
             {
@@ -51,6 +64,27 @@ namespace covidSim.Services
                     CalcNextPositionForGoingHomePerson();
                     break;
             }
+
+            if (PersonHealth == PersonHealth.Sick)
+            {
+                if (random.NextDouble() <= ProbToDie)
+                {
+                    PersonHealth = PersonHealth.Dying;
+                }
+                sickStepsCount++;
+                if (sickStepsCount >= StepsToRecovery)
+                    PersonHealth = PersonHealth.Healthy;
+            }
+            if (state == PersonState.AtHome)
+                HomeStayingDuration++;
+            else if (state == PersonState.Walking)
+            {
+                HomeStayingDuration = 0;
+                IsBored = false;
+            }
+            
+            if (HomeStayingDuration > 4)
+                IsBored = true;
         }
 
         private void CalcNextStepForPersonAtHome()
@@ -174,18 +208,22 @@ namespace covidSim.Services
 
         private bool IsCoordNotInOtherHouse(Vec vec)
         {
-            return Game.Instance.Map.Houses.Where(x => x.Id != HomeId).All(x =>
-            {
-                var homeCoord = x.Coordinates.LeftTopCorner;
-                var homeCenter = new Vec(homeCoord.X + HouseCoordinates.Width / 2,
-                    homeCoord.Y + HouseCoordinates.Height / 2);
-                if (homeCenter.X - HouseCoordinates.Width / 2 <= vec.X &&
-                    vec.X <= homeCenter.X + HouseCoordinates.Width / 2 &&
-                    homeCenter.Y - HouseCoordinates.Height / 2 <= vec.Y &&
-                    vec.Y <= homeCenter.Y + HouseCoordinates.Height / 2)
-                    return false;
+            return Game.Instance.Map.Houses
+                .Where(x => x.Id != HomeId)
+                .All(x => !IsCoordInHouse(vec, x.Coordinates));
+        }
+
+        private bool IsCoordInHouse(Vec vec, HouseCoordinates houseCoordinates)
+        {
+            var homeCoord = houseCoordinates.LeftTopCorner;
+            var homeCenter = new Vec(homeCoord.X + HouseCoordinates.Width / 2,
+                homeCoord.Y + HouseCoordinates.Height / 2);
+            if (homeCenter.X - HouseCoordinates.Width / 2 <= vec.X &&
+                vec.X <= homeCenter.X + HouseCoordinates.Width / 2 &&
+                homeCenter.Y - HouseCoordinates.Height / 2 <= vec.Y &&
+                vec.Y <= homeCenter.Y + HouseCoordinates.Height / 2)
                 return true;
-            });
+            return false;
         }
     }
 }
